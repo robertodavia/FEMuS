@@ -48,6 +48,7 @@ private:
 public:
   int _NumOfCells = 0;
   int * _ProcCellsLocToGlob = NULL;
+  int * _ProcNodesLocToGlob = NULL;
   
   // structures filled by proc 0
   int * _ProcCells = NULL;
@@ -55,9 +56,11 @@ public:
   int * _Celldispls = NULL;
   int * _Nodesdispls = NULL;  
   int * _AllProcCellsLocToGlob = NULL;
+  int * _AllProcNodesLocToGlob = NULL;
   
   MyParMedCom();
   MyParMedCom(int proc, int procs, int LocalToGlobalCellId[], ParaMEDMEM::MEDCouplingUMesh * ProcMesh);
+  MyParMedCom(int proc, int procs, int LocalToGlobalCellId[], int LocalToGlobalNodeId[], ParaMEDMEM::MEDCouplingUMesh * ProcMesh);
   ~MyParMedCom();
   
  /*! \brief The following functions allow to gather a med field on proc 0 and to get it.  
@@ -68,6 +71,10 @@ public:
   void GatherMedFieldOnProc0(ParaMEDMEM::MEDCouplingFieldDouble *ProcField, ParaMEDMEM::MEDCouplingUMesh *GlobMesh);
   ParaMEDMEM::MEDCouplingFieldDouble *GetGatheredFieldOnProc0();
   
+ /*! \brief The following functions allow to scatter a med field from proc 0 on all procs.  
+     First \c LoadMedFieldToScatter should be called by proc 0, giving the global field as input parameter, 
+     then \c ScatterMedFieldFromProc0 should be called only by all procs in order to scatter the field
+  */  
   void LoadMedFieldToScatter(ParaMEDMEM::MEDCouplingFieldDouble *GlobField);
   ParaMEDMEM::MEDCouplingFieldDouble *ScatterMedFieldFromProc0(std::string FieldName);
 };

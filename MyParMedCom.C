@@ -10,6 +10,7 @@ MyParMedCom::MyParMedCom():__proc(0), __nprocs(1){}
 MyParMedCom::MyParMedCom(int proc, 
 			 int procs, 
 			 int LocalToGlobalCellId[], 
+			 int LocalToGlobalNodesId[], 
 			 ParaMEDMEM::MEDCouplingUMesh * ProcMesh):
 			 __proc(proc), __nprocs(procs)
 			 {
@@ -19,8 +20,10 @@ MyParMedCom::MyParMedCom(int proc,
   int NumOfNodes = __ProcMesh->getNumberOfNodes();
   _NumOfCells = NumOfCells;
   _ProcCellsLocToGlob = (int *) malloc(sizeof(int) * NumOfCells);
-  for(int k=0; k<NumOfCells; k++) {
-    _ProcCellsLocToGlob[k] = LocalToGlobalCellId[k];}  
+  _ProcNodesLocToGlob = (int *) malloc(sizeof(int) * NumOfNodes);
+  for(int k=0; k<NumOfCells; k++)  _ProcCellsLocToGlob[k] = LocalToGlobalCellId[k];
+  for(int k=0; k<NumOfNodes; k++)  _ProcNodesLocToGlob[k] = LocalToGlobalNodesId[k];
+  
   if(__proc==0) {
     _ProcCells = (int *) malloc(sizeof(int) * __nprocs);
     _ProcNodes = (int *) malloc(sizeof(int) * __nprocs);
@@ -47,11 +50,12 @@ MyParMedCom::MyParMedCom(int proc,
        _Nodesdispls[i] = _Nodesdispls[i-1] + _ProcNodes[i-1];
     }     
     _AllProcCellsLocToGlob = (int*) malloc(sizeof(int)*_globcells);
+    _AllProcNodesLocToGlob = (int*) malloc(sizeof(int)*_globnodes);
   }
 
   // Gathering all proc local to global cell numbering -> map used to fill field on the global mesh
   MPI_Gatherv(LocalToGlobalCellId,  NumOfCells, MPI_INT, _AllProcCellsLocToGlob, _ProcCells, _Celldispls, MPI_INT, 0, _ClassComm);   
-  
+  MPI_Gatherv(LocalToGlobalNodesId,  NumOfNodes, MPI_INT, _AllProcNodesLocToGlob, _ProcNodes, _Nodesdispls, MPI_INT, 0, _ClassComm);   
 }
 
 MyParMedCom::~MyParMedCom(){
@@ -116,10 +120,16 @@ void MyParMedCom::GatherMedFieldOnProc0 (ParaMEDMEM::MEDCouplingFieldDouble *Pro
   
   // REORDERING GATHERED FIELD INSIDE MED FIELD ===========================
   if(__proc==0){
-      for(int j=0; j<GlobMesh->getNumberOfCells(); j++) ArrayFromMedField[_AllProcCellsLocToGlob[j]] = GatheredField[j];
+   if(SourceType == ParaMEDMEM::ON_CELLS) 
+      for(int j=0; j<GlobMesh->getNumberOfCells(); j++) 
+	ArrayFromMedField[_AllProcCellsLocToGlob[j]] = GatheredField[j];
       
+   if(SourceType == ParaMEDMEM::ON_NODES)
+     for(int j=0; j<GlobMesh->getNumberOfNodes(); j++) 
+       ArrayFromMedField[_AllProcNodesLocToGlob[j]] = GatheredField[j];
+     
       if(__GlobFieldToGatherFilled) __GlobFieldToGather = NULL; // If __GlobFieldToGather is already filled we erase it   
-      __GlobFieldToGather = ParaMEDMEM::MEDCouplingFieldDouble::New(ParaMEDMEM::ON_CELLS);
+      __GlobFieldToGather = ParaMEDMEM::MEDCouplingFieldDouble::New(SourceType);
       __GlobFieldToGather->setArray(GlobArray);
       __GlobFieldToGather->setMesh(GlobMesh);
       __GlobFieldToGather->setName(ProcField->getName());
@@ -164,7 +174,14 @@ void MyParMedCom::LoadMedFieldToScatter (ParaMEDMEM::MEDCouplingFieldDouble *Glo
        [0...Nb0, 0...Nb1,     0...Nbn]
      */
     __GlobFieldToScatter = (double*) malloc(sizeof(double) * NbOfTuples);
-    for(int k=0; k<NbOfTuples; k++) __GlobFieldToScatter[k] = TmpArray[_AllProcCellsLocToGlob[k]];
+    if(!_FieldToScatterType)
+      for(int k=0; k<NbOfTuples; k++) 
+	__GlobFieldToScatter[k] = TmpArray[_AllProcCellsLocToGlob[k]];
+      
+    if(_FieldToScatterType)
+      for(int k=0; k<NbOfTuples; k++) 
+	__GlobFieldToScatter[k] = TmpArray[_AllProcNodesLocToGlob[k]];  
+    
     __GlobFieldToScatterFilled = true;
     TmpArray = NULL;
   }
